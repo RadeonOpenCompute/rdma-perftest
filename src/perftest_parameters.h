@@ -70,6 +70,11 @@
 #include CUDA_PATH
 #endif
 
+#ifdef HAVE_HSA
+#include HSA_PATH
+#endif
+
+
 /* Connection types available. */
 #define RC  (0)
 #define UC  (1)
@@ -377,6 +382,9 @@ struct perftest_parameters {
 	int             		pkey_index;
 	int				raw_qos;
 	int				use_cuda;
+	int				use_hsa;
+	unsigned long			hsa_gpu_agent_index;
+	unsigned long			hsa_region_index;
 	char				*mmap_file;
 	unsigned long			mmap_offset;
 	/* New test params format pilot. will be used in all flags soon,. */

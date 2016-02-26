@@ -24,6 +24,9 @@ AC_SUBST(MINOR_VERSION)
 AC_ARG_VAR(CUDA_H_PATH, help-string)
 AC_ARG_VAR(RANLIB, ranlib tool)
 
+AC_ARG_VAR(HSA_H_PATH, hsa.h path to enable HSA support)
+
+
 AC_ARG_ENABLE([verbs_exp],
 [AS_HELP_STRING([--disable-verbs_exp],
 [Disable Verbs Experimental])],
@@ -151,6 +154,12 @@ if [test "$CUDA_H_PATH" ]; then
 	AC_DEFINE([HAVE_CUDA], [1], [Enable CUDA feature])
 	AC_DEFINE_UNQUOTED([CUDA_PATH], "$CUDA_H_PATH" , [Enable CUDA feature])
 	LIBS=$LIBS" -lcuda"
+fi
+
+if [test "$HSA_H_PATH" ]; then
+	AC_DEFINE([HAVE_HSA], [1], [Enable HSA feature])
+	AC_DEFINE_UNQUOTED([HSA_PATH], "$HSA_H_PATH" , [Enable HSA feature])
+	LIBS=$LIBS" -lhsa-runtime64"
 fi
 
 CFLAGS="-g -Wall -D_GNU_SOURCE -O3"

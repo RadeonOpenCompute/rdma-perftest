@@ -381,6 +381,12 @@ static void usage(const char *argv0, VerbType verb, TestType tst, int connection
 	printf(" Use CUDA lib for GPU-Direct testing.\n");
 	#endif
 
+	#ifdef HAVE_HSA
+	printf("      --use_hsa=[agent,region] ");
+	printf(" Use HSA allocation for GPU agent and region index for testing .\n");
+	printf(" Default: First found GPU agent and region (0-based)\n");
+	#endif
+
 
 	#ifdef HAVE_VERBS_EXP
 	printf("      --use_exp ");
@@ -514,6 +520,9 @@ static void init_perftest_params(struct perftest_parameters *user_param)
 	user_param->rate_units		= MEGA_BYTE_PS;
 	user_param->output		= -1;
 	user_param->use_cuda		= 0;
+	user_param->use_hsa		= 0;
+	user_param->hsa_gpu_agent_index	= 0;
+	user_param->hsa_region_index	= 0;
 	user_param->mmap_file		= NULL;
 	user_param->mmap_offset		= 0;
 	user_param->iters_per_port[0]	= 0;
@@ -1006,6 +1015,28 @@ static void force_dependecies(struct perftest_parameters *user_param)
 	}
 	#endif
 
+	#ifdef HAVE_HSA
+	if (user_param->use_hsa) {
+		if (user_param->tst != BW) {
+			printf(RESULT_LINE);
+			fprintf(stderr," Perftest supports HSA only in BW tests\n");
+			exit(1);
+		}
+
+		if (user_param->mmap_file != NULL) {
+			printf(RESULT_LINE);
+			fprintf(stderr,"You cannot use HSA allocation and an mmap'd file at the same time\n");
+			exit(1);
+		}
+
+		if (user_param->use_cuda) {
+			printf(RESULT_LINE);
+			fprintf(stderr,"You cannot use HSA allocation and CUDA one at the same time\n");
+			exit(1);
+		}
+	}
+	#endif
+
 	if ( (user_param->connection_type == UD) && (user_param->inline_size > MAX_INLINE_UD) ) {
 		printf(RESULT_LINE);
 		fprintf(stderr, "Setting inline size to %d (Max inline size in UD)\n",MAX_INLINE_UD);
@@ -1328,6 +1359,7 @@ int parser(struct perftest_parameters *user_param,char *argv[], int argc)
 	static int dont_xchg_versions_flag = 0;
 	static int use_exp_flag = 0;
 	static int use_cuda_flag = 0;
+	static int use_hsa_flag = 0;
 	static int mmap_file_flag = 0;
 	static int mmap_offset_flag = 0;
 	static int ipv6_flag = 0;
@@ -1413,6 +1445,9 @@ int parser(struct perftest_parameters *user_param,char *argv[], int argc)
 			{ .name = "retry_count",	.has_arg = 1, .flag = &retry_count_flag, .val = 1},
 			{ .name = "dont_xchg_versions",	.has_arg = 0, .flag = &dont_xchg_versions_flag, .val = 1},
 			{ .name = "use_cuda",		.has_arg = 0, .flag = &use_cuda_flag, .val = 1},
+			#ifdef HAVE_HSA
+			{ .name = "use_hsa",		.has_arg = 2, .flag = &use_hsa_flag, .val = 1},
+			#endif
 			{ .name = "mmap",		.has_arg = 1, .flag = &mmap_file_flag, .val = 1},
 			{ .name = "mmap-offset",	.has_arg = 1, .flag = &mmap_offset_flag, .val = 1},
 			{ .name = "ipv6",		.has_arg = 0, .flag = &ipv6_flag, .val = 1},
@@ -1741,6 +1776,36 @@ int parser(struct perftest_parameters *user_param,char *argv[], int argc)
 					  user_param->dlid = (uint16_t)strtol(optarg, NULL, 0);
 					  dlid_flag = 0;
 				  }
+				  #ifdef HAVE_HSA
+				  if (use_hsa_flag) {
+					  if (optarg) {
+						  /* We have optional parameters */
+						  char *pt;
+						  char *s = strdup(optarg);
+						  if (!s) {
+							  printf("Out of memory\n");
+							  return FAILURE;
+						  }
+						  pt = strtok(s,",");
+						  if (!pt) {
+							 fprintf(stderr, "Invalid agent/region information\n");
+							 free(s);
+							 return FAILURE;
+						  }
+
+						  user_param->hsa_gpu_agent_index = strtoul(pt,NULL,0);
+
+						  pt = strtok(NULL, ",");
+						  if (!pt) {
+							 fprintf(stderr, "Invalid agent/region information\n");
+							 free(s);
+							 return FAILURE;
+						  }
+						  user_param->hsa_region_index = strtoul(pt,NULL,0);
+						  free(s);
+					  }
+				  }
+				  #endif
 				  break;
 
 			default:
@@ -1784,6 +1849,11 @@ int parser(struct perftest_parameters *user_param,char *argv[], int argc)
 	if (use_cuda_flag) {
 		user_param->use_cuda = 1;
 	}
+
+	if (use_hsa_flag) {
+		user_param->use_hsa = 1;
+	}
+
 	if (report_both_flag) {
 		user_param->report_both = 1;
 	}

@@ -127,6 +127,192 @@ static int pp_free_gpu(struct pingpong_context *ctx)
 	return ret;
 }
 #endif
+#ifdef HAVE_HSA
+
+static hsa_agent_t  hsa_agent;
+static hsa_region_t hsa_region;
+static unsigned long hsa_iterate_index;
+
+hsa_status_t get_kernel_dispatch_agent(hsa_agent_t agent, void* data)
+{
+	uint32_t features = 0;
+	char name[64];
+	hsa_status_t status;
+	hsa_device_type_t device_type;
+	struct perftest_parameters *user_param =
+		(struct perftest_parameters *)data;
+
+	status = hsa_agent_get_info(agent, HSA_AGENT_INFO_FEATURE, &features);
+
+	if (status != HSA_STATUS_SUCCESS) {
+		printf("Failure to get agent info: 0x%x\n", status);
+		exit(1);
+	}
+
+	status = hsa_agent_get_info(agent, HSA_AGENT_INFO_DEVICE, &device_type);
+
+	if (status != HSA_STATUS_SUCCESS) {
+		printf("Failure to get device type: 0x%x\n", status);
+		exit(1);
+	}
+
+	if (device_type == HSA_DEVICE_TYPE_GPU &&
+		features & HSA_AGENT_FEATURE_KERNEL_DISPATCH) {
+
+		if (hsa_iterate_index == user_param->hsa_gpu_agent_index) {
+			status = hsa_agent_get_info(agent, HSA_AGENT_INFO_NAME, name);
+
+			if (status != HSA_STATUS_SUCCESS) {
+				printf("Failure to get agent name : 0x%x\n", status);
+				exit(1);
+			}
+
+			printf("Found GPU agent supporting AQL packets of kernel dispatch type: %s.\n",
+									name);
+
+			hsa_agent = agent;
+			return HSA_STATUS_INFO_BREAK;
+		}
+
+		hsa_iterate_index++;
+	}
+
+	// Keep iterating
+	return HSA_STATUS_SUCCESS;
+}
+
+
+hsa_status_t agent_regions_callback(hsa_region_t region, void *data)
+{
+	hsa_status_t status;
+	hsa_region_segment_t segment;
+	hsa_region_global_flag_t global_flag;
+	size_t size;
+	struct perftest_parameters *user_param =
+		(struct perftest_parameters *)data;
+
+	status = hsa_region_get_info(region, HSA_REGION_INFO_SEGMENT, &segment);
+
+	if (status != HSA_STATUS_SUCCESS) {
+		printf("Failure to get segment info: 0x%x\n", status);
+		exit(1);
+	}
+
+	if (segment ==  HSA_REGION_SEGMENT_GLOBAL) {
+
+		if (hsa_iterate_index == user_param->hsa_region_index) {
+
+			status = hsa_region_get_info(region, HSA_REGION_INFO_GLOBAL_FLAGS,
+				&global_flag);
+			if (status != HSA_STATUS_SUCCESS) {
+				printf("Failure to get region global flags: 0x%x\n", status);
+				exit(1);
+			}
+
+			status = hsa_region_get_info(region, HSA_REGION_INFO_SIZE, &size);
+			if (status != HSA_STATUS_SUCCESS) {
+				printf("Failure to get region size: 0x%x\n", status);
+				exit(1);
+			}
+
+			printf("Found global segment.\n"
+				"    Flags  : 0x%x\n"
+				"    Size   : 0x%lx (%ldMiB)\n",
+				global_flag, size, size / (1024L * 1024L));
+			hsa_region = region;
+			return HSA_STATUS_INFO_BREAK;
+		}
+
+		hsa_iterate_index++;
+	}
+
+	return HSA_STATUS_SUCCESS;
+}
+
+static int pp_hsa_init(struct pingpong_context *ctx, size_t _size, struct perftest_parameters *user_param)
+{
+	hsa_status_t status;
+	void *ptr;
+
+	printf("Initializing HSA.....\n");
+
+	status = hsa_init();
+
+	if (status != HSA_STATUS_SUCCESS) {
+		printf("Failure to open HSA connection: 0x%x\n", status);
+		exit(1);
+	}
+
+	printf("Searching for GPU agent with index %lu\n",
+			user_param->hsa_gpu_agent_index);
+	hsa_iterate_index = 0;
+	hsa_agent.handle = (uint64_t) -1;
+	status = hsa_iterate_agents(get_kernel_dispatch_agent, user_param);
+
+	if (status != HSA_STATUS_SUCCESS && status != HSA_STATUS_INFO_BREAK) {
+		printf("Failure to iterate HSA agents: 0x%x\n", status);
+		exit(1);
+	}
+
+	if (hsa_agent.handle == (uint64_t)-1) {
+		printf("Could not find agent supporting AQL packets of kernel dispatch type\n");
+		return 1;
+	}
+
+
+	printf("Searching for region with index %lu\n",
+			user_param->hsa_region_index);
+	hsa_iterate_index = 0;
+	hsa_region.handle = (uint64_t) -1;
+	status = hsa_agent_iterate_regions(hsa_agent, agent_regions_callback, user_param);
+
+	if (status != HSA_STATUS_SUCCESS && status != HSA_STATUS_INFO_BREAK) {
+		printf("Failure to iterate regions: 0x%x\n", status);
+		exit(1);
+	}
+
+	if (hsa_region.handle == (uint64_t)-1) {
+		printf("Could not find memory region\n");
+		return 1;
+	}
+
+	status = hsa_memory_allocate(hsa_region, _size, &ptr);
+	if (status != HSA_STATUS_SUCCESS) {
+		printf("Failure to allocate HSA memory: 0x%x\n", status);
+		exit(1);
+	}
+
+	printf("Allocated HSA buffer at %p (Size 0x%lx)\n",
+			ptr, (unsigned long) _size);
+	ctx->buf[0] = ptr;
+
+	return 0;
+}
+static int pp_hsa_shutdown(struct pingpong_context *ctx)
+{
+	hsa_status_t status;
+	int ret = 0;
+
+	status = hsa_memory_free(ctx->buf[0]);
+	ctx->buf[0] = NULL;
+
+	if (status != HSA_STATUS_SUCCESS) {
+		printf("Failure to free HSA memory: 0x%x\n", status);
+		exit(1);
+	}
+
+	printf("Shutdown HSA.....\n");
+	status = hsa_shut_down();
+
+	if (status != HSA_STATUS_SUCCESS) {
+		fprintf(stderr, "Failure to close HSA connection: 0x%x\n",
+				status);
+		exit(1);
+	}
+
+	return ret;
+}
+#endif
 
 static int pp_init_mmap(struct pingpong_context *ctx, size_t size,
 			const char *fname, unsigned long offset)
@@ -859,6 +1045,12 @@ int destroy_ctx(struct pingpong_context *ctx,
 	}
 	else
 	#endif
+	#ifdef HAVE_HSA
+	if (user_param->use_hsa) {
+		pp_hsa_shutdown(ctx);
+	}
+	else
+	#endif
 	if (user_param->mmap_file != NULL) {
 		pp_free_mmap(ctx);
 	} else if (ctx->is_contig_supported == FAILURE) {
@@ -1142,6 +1334,15 @@ int create_single_mr(struct pingpong_context *ctx, struct perftest_parameters *u
 	if (user_param->use_cuda) {
 		ctx->is_contig_supported = FAILURE;
 		if(pp_init_gpu(ctx, ctx->buff_size)) {
+			fprintf(stderr, "Couldn't allocate work buf.\n");
+			return 1;
+		}
+	} else
+	#endif
+	#ifdef HAVE_HSA
+	if (user_param->use_hsa) {
+		ctx->is_contig_supported = FAILURE;
+		if(pp_hsa_init(ctx, ctx->buff_size, user_param)) {
 			fprintf(stderr, "Couldn't allocate work buf.\n");
 			return 1;
 		}
