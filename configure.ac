@@ -157,9 +157,20 @@ if [test "$CUDA_H_PATH" ]; then
 fi
 
 if [test "$HSA_H_PATH" ]; then
-	AC_DEFINE([HAVE_HSA], [1], [Enable HSA feature])
-	AC_DEFINE_UNQUOTED([HSA_PATH], "$HSA_H_PATH" , [Enable HSA feature])
-	LIBS=$LIBS" -lhsa-runtime64"
+        AC_MSG_NOTICE([Enable HSA Support])
+        AC_CHECK_SIZEOF([void*])
+        if test "x$ac_cv_sizeof_voidp" == "x"; then
+                AC_ERROR([Cannot determine size of void*])
+        fi
+        if test "${ac_cv_sizeof_voidp}" = "4"; then
+                AC_ERROR([You are trying to enable HSA support on a 32-bit platform])
+        fi
+        AC_DEFINE([HAVE_HSA], [1], [Enable HSA feature])
+        AC_DEFINE_UNQUOTED([HSA_PATH], "$HSA_H_PATH" , [Enable HSA feature])
+
+        AC_SEARCH_LIBS([hsa_init], [hsa-runtime64], [], [
+        AC_MSG_ERROR([Unable to find libhsa-runtime64 library])
+        ])
 fi
 
 CFLAGS="-g -Wall -D_GNU_SOURCE -O3"
