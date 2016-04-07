@@ -382,9 +382,9 @@ static void usage(const char *argv0, VerbType verb, TestType tst, int connection
 	#endif
 
 	#ifdef HAVE_HSA
-	printf("      --use_hsa=[agent,region] ");
-	printf(" Use HSA allocation for GPU agent and region index for testing .\n");
-	printf(" Default: First found GPU agent and region (0-based)\n");
+	printf("      --use_hsa=[agent,pool] ");
+	printf(" Allocate HSA global memory pool for agent for PeerDirect testing");
+	printf("(default: first found HSA agent and global pool (0-based))\n");
 	#endif
 
 
@@ -521,8 +521,8 @@ static void init_perftest_params(struct perftest_parameters *user_param)
 	user_param->output		= -1;
 	user_param->use_cuda		= 0;
 	user_param->use_hsa		= 0;
-	user_param->hsa_gpu_agent_index	= 0;
-	user_param->hsa_region_index	= 0;
+	user_param->hsa_agent_index	= 0;
+	user_param->hsa_pool_index	= 0;
 	user_param->mmap_file		= NULL;
 	user_param->mmap_offset		= 0;
 	user_param->iters_per_port[0]	= 0;
@@ -1793,7 +1793,7 @@ int parser(struct perftest_parameters *user_param,char *argv[], int argc)
 							 return FAILURE;
 						  }
 
-						  user_param->hsa_gpu_agent_index = strtoul(pt,NULL,0);
+						  user_param->hsa_agent_index = strtoul(pt,NULL,0);
 
 						  pt = strtok(NULL, ",");
 						  if (!pt) {
@@ -1801,7 +1801,7 @@ int parser(struct perftest_parameters *user_param,char *argv[], int argc)
 							 free(s);
 							 return FAILURE;
 						  }
-						  user_param->hsa_region_index = strtoul(pt,NULL,0);
+						  user_param->hsa_pool_index = strtoul(pt,NULL,0);
 						  free(s);
 					  }
 				  }

@@ -24,7 +24,7 @@ AC_SUBST(MINOR_VERSION)
 AC_ARG_VAR(CUDA_H_PATH, help-string)
 AC_ARG_VAR(RANLIB, ranlib tool)
 
-AC_ARG_VAR(HSA_H_PATH, hsa.h path to enable HSA support)
+AC_ARG_VAR(HSA_INC_PATH, Location of HSA header files to enable HSA support)
 
 
 AC_ARG_ENABLE([verbs_exp],
@@ -156,7 +156,7 @@ if [test "$CUDA_H_PATH" ]; then
 	LIBS=$LIBS" -lcuda"
 fi
 
-if [test "$HSA_H_PATH" ]; then
+if [test "$HSA_INC_PATH" ]; then
         AC_MSG_NOTICE([Enable HSA Support])
         AC_CHECK_SIZEOF([void*])
         if test "x$ac_cv_sizeof_voidp" == "x"; then
@@ -166,7 +166,8 @@ if [test "$HSA_H_PATH" ]; then
                 AC_ERROR([You are trying to enable HSA support on a 32-bit platform])
         fi
         AC_DEFINE([HAVE_HSA], [1], [Enable HSA feature])
-        AC_DEFINE_UNQUOTED([HSA_PATH], "$HSA_H_PATH" , [Enable HSA feature])
+        AC_DEFINE_UNQUOTED([HSA_PATH], "$HSA_INC_PATH/hsa.h" , [Enable HSA feature])
+        AC_DEFINE_UNQUOTED([HSA_EXT_AMD_PATH], "$HSA_INC_PATH/hsa_ext_amd.h" , [Enable HSA AMD extension])
 
         AC_SEARCH_LIBS([hsa_init], [hsa-runtime64], [], [
         AC_MSG_ERROR([Unable to find libhsa-runtime64 library])

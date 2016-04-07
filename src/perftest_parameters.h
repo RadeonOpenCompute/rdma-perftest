@@ -72,6 +72,7 @@
 
 #ifdef HAVE_HSA
 #include HSA_PATH
+#include HSA_EXT_AMD_PATH
 #endif
 
 
@@ -383,8 +384,8 @@ struct perftest_parameters {
 	int				raw_qos;
 	int				use_cuda;
 	int				use_hsa;
-	unsigned long			hsa_gpu_agent_index;
-	unsigned long			hsa_region_index;
+	unsigned long			hsa_agent_index;
+	unsigned long			hsa_pool_index;
 	char				*mmap_file;
 	unsigned long			mmap_offset;
 	/* New test params format pilot. will be used in all flags soon,. */

@@ -130,96 +130,107 @@ static int pp_free_gpu(struct pingpong_context *ctx)
 #ifdef HAVE_HSA
 
 static hsa_agent_t  hsa_agent;
-static hsa_region_t hsa_region;
+static hsa_amd_memory_pool_t hsa_pool;
 static unsigned long hsa_iterate_index;
 
-hsa_status_t get_kernel_dispatch_agent(hsa_agent_t agent, void* data)
+static hsa_status_t hsa_agent_callback(hsa_agent_t agent, void* data)
 {
-	uint32_t features = 0;
 	char name[64];
-	hsa_status_t status;
+	uint32_t bdfid;
 	hsa_device_type_t device_type;
+	hsa_status_t status;
 	struct perftest_parameters *user_param =
 		(struct perftest_parameters *)data;
 
-	status = hsa_agent_get_info(agent, HSA_AGENT_INFO_FEATURE, &features);
+	if (hsa_iterate_index == user_param->hsa_agent_index) {
+		status = hsa_agent_get_info(agent, HSA_AGENT_INFO_NAME, name);
 
-	if (status != HSA_STATUS_SUCCESS) {
-		printf("Failure to get agent info: 0x%x\n", status);
-		exit(1);
-	}
+		if (status != HSA_STATUS_SUCCESS) {
+			printf("Failure to get agent name : 0x%x\n", status);
+			exit(1);
+		}
 
-	status = hsa_agent_get_info(agent, HSA_AGENT_INFO_DEVICE, &device_type);
+		status = hsa_agent_get_info(agent, HSA_AGENT_INFO_DEVICE, &device_type);
+		if (status != HSA_STATUS_SUCCESS) {
+			printf("Failure to get device type: 0x%x\n", status);
+			exit(1);
+		}
 
-	if (status != HSA_STATUS_SUCCESS) {
-		printf("Failure to get device type: 0x%x\n", status);
-		exit(1);
-	}
-
-	if (device_type == HSA_DEVICE_TYPE_GPU &&
-		features & HSA_AGENT_FEATURE_KERNEL_DISPATCH) {
-
-		if (hsa_iterate_index == user_param->hsa_gpu_agent_index) {
-			status = hsa_agent_get_info(agent, HSA_AGENT_INFO_NAME, name);
-
+		if (device_type == HSA_DEVICE_TYPE_GPU) {
+			status = hsa_agent_get_info(agent, HSA_AMD_AGENT_INFO_BDFID, &bdfid);
 			if (status != HSA_STATUS_SUCCESS) {
-				printf("Failure to get agent name : 0x%x\n", status);
+				printf("Failure to get PCI Info: 0x%x\n", status);
 				exit(1);
 			}
 
-			printf("Found GPU agent supporting AQL packets of kernel dispatch type: %s.\n",
-									name);
+			// BFD: eight-bit PCI bus, five-bit device, and three-bit
+			// function number
+			uint32_t Bus	= (bdfid >> 8) & 0xFF;
+			uint32_t Device	= (bdfid >> 3) & 0x1F;
+			uint32_t Func	= bdfid & 0x7;
 
-			hsa_agent = agent;
-			return HSA_STATUS_INFO_BREAK;
+			printf("Found GPU agent : %s.\n", name);
+			printf("      Device topology 		PCI [ B#%02d, D#%02d, F#%02d ]\n",
+					Bus, Device, Func);
+		}
+		else {
+			printf("Found CPU agent : %s.\n", name);
 		}
 
-		hsa_iterate_index++;
+		hsa_agent = agent;
+		return HSA_STATUS_INFO_BREAK;
 	}
 
+	hsa_iterate_index++;
 	// Keep iterating
 	return HSA_STATUS_SUCCESS;
 }
 
-
-hsa_status_t agent_regions_callback(hsa_region_t region, void *data)
+static hsa_status_t memory_pool_callback(hsa_amd_memory_pool_t memory_pool, void* data)
 {
 	hsa_status_t status;
-	hsa_region_segment_t segment;
-	hsa_region_global_flag_t global_flag;
-	size_t size;
+	hsa_amd_memory_pool_global_flag_t global_flags;
+	size_t	pool_size;
+	hsa_amd_segment_t amd_segment;
+
 	struct perftest_parameters *user_param =
 		(struct perftest_parameters *)data;
 
-	status = hsa_region_get_info(region, HSA_REGION_INFO_SEGMENT, &segment);
+	status = hsa_amd_memory_pool_get_info(memory_pool,
+					HSA_AMD_MEMORY_POOL_INFO_SEGMENT,
+					&amd_segment);
 
 	if (status != HSA_STATUS_SUCCESS) {
-		printf("Failure to get segment info: 0x%x\n", status);
+		printf("Failure to get pool info: 0x%x\n", status);
 		exit(1);
 	}
 
-	if (segment ==  HSA_REGION_SEGMENT_GLOBAL) {
+	if (amd_segment ==  HSA_AMD_SEGMENT_GLOBAL) {
+		if (hsa_iterate_index == user_param->hsa_pool_index) {
 
-		if (hsa_iterate_index == user_param->hsa_region_index) {
+		status = hsa_amd_memory_pool_get_info(memory_pool,
+						HSA_AMD_MEMORY_POOL_INFO_GLOBAL_FLAGS,
+						&global_flags);
 
-			status = hsa_region_get_info(region, HSA_REGION_INFO_GLOBAL_FLAGS,
-				&global_flag);
-			if (status != HSA_STATUS_SUCCESS) {
-				printf("Failure to get region global flags: 0x%x\n", status);
-				exit(1);
-			}
+		if (status != HSA_STATUS_SUCCESS) {
+			printf("Failure to query global flags: 0x%x\n", status);
+			exit(1);
+		}
 
-			status = hsa_region_get_info(region, HSA_REGION_INFO_SIZE, &size);
-			if (status != HSA_STATUS_SUCCESS) {
-				printf("Failure to get region size: 0x%x\n", status);
-				exit(1);
-			}
+		status = hsa_amd_memory_pool_get_info(memory_pool,
+						HSA_AMD_MEMORY_POOL_INFO_SIZE,
+						&pool_size);
 
-			printf("Found global segment.\n"
-				"    Flags  : 0x%x\n"
-				"    Size   : 0x%lx (%ldMiB)\n",
-				global_flag, size, size / (1024L * 1024L));
-			hsa_region = region;
+		if (status != HSA_STATUS_SUCCESS) {
+			printf("Failure to query pool size: 0x%x\n", status);
+			exit(1);
+		}
+
+		printf("Found global pool.\n"
+			"    Flags  : 0x%x\n"
+			"    Size   : 0x%lx (%ldMiB)\n",
+				global_flags, pool_size, pool_size / (1024L * 1024L));
+			hsa_pool = memory_pool;
 			return HSA_STATUS_INFO_BREAK;
 		}
 
@@ -243,11 +254,11 @@ static int pp_hsa_init(struct pingpong_context *ctx, size_t _size, struct perfte
 		exit(1);
 	}
 
-	printf("Searching for GPU agent with index %lu\n",
-			user_param->hsa_gpu_agent_index);
+	printf("Searching for HSA agent with index %lu\n",
+			user_param->hsa_agent_index);
 	hsa_iterate_index = 0;
 	hsa_agent.handle = (uint64_t) -1;
-	status = hsa_iterate_agents(get_kernel_dispatch_agent, user_param);
+	status = hsa_iterate_agents(hsa_agent_callback, user_param);
 
 	if (status != HSA_STATUS_SUCCESS && status != HSA_STATUS_INFO_BREAK) {
 		printf("Failure to iterate HSA agents: 0x%x\n", status);
@@ -255,28 +266,28 @@ static int pp_hsa_init(struct pingpong_context *ctx, size_t _size, struct perfte
 	}
 
 	if (hsa_agent.handle == (uint64_t)-1) {
-		printf("Could not find agent supporting AQL packets of kernel dispatch type\n");
-		return 1;
+		printf("Could not find HSA agent with given index.\n");
+		exit(1);
 	}
 
+	printf("Searching for global pool with index %lu\n", user_param->hsa_pool_index);
 
-	printf("Searching for region with index %lu\n",
-			user_param->hsa_region_index);
 	hsa_iterate_index = 0;
-	hsa_region.handle = (uint64_t) -1;
-	status = hsa_agent_iterate_regions(hsa_agent, agent_regions_callback, user_param);
+	hsa_pool.handle = (uint64_t) -1;
+	status = hsa_amd_agent_iterate_memory_pools(hsa_agent, memory_pool_callback, user_param);
 
 	if (status != HSA_STATUS_SUCCESS && status != HSA_STATUS_INFO_BREAK) {
 		printf("Failure to iterate regions: 0x%x\n", status);
 		exit(1);
 	}
 
-	if (hsa_region.handle == (uint64_t)-1) {
-		printf("Could not find memory region\n");
-		return 1;
+	if (hsa_pool.handle == (uint64_t)-1) {
+		printf("Could not find memory pool with given index\n");
+		exit(1);
 	}
 
-	status = hsa_memory_allocate(hsa_region, _size, &ptr);
+	status = hsa_amd_memory_pool_allocate(hsa_pool, _size, 0, &ptr);
+
 	if (status != HSA_STATUS_SUCCESS) {
 		printf("Failure to allocate HSA memory: 0x%x\n", status);
 		exit(1);
@@ -293,7 +304,7 @@ static int pp_hsa_shutdown(struct pingpong_context *ctx)
 	hsa_status_t status;
 	int ret = 0;
 
-	status = hsa_memory_free(ctx->buf[0]);
+	status = hsa_amd_memory_pool_free(ctx->buf[0]);
 	ctx->buf[0] = NULL;
 
 	if (status != HSA_STATUS_SUCCESS) {
@@ -770,9 +781,9 @@ int destroy_rdma_resources(struct pingpong_context *ctx,
 {
 	int ret;
 	if (user_param->machine == CLIENT) {
-		ret = rdma_destroy_id(ctx->cm_id);	
+		ret = rdma_destroy_id(ctx->cm_id);
 	} else {
-		ret = rdma_destroy_id(ctx->cm_id_control);	
+		ret = rdma_destroy_id(ctx->cm_id_control);
 	}
 	rdma_destroy_event_channel(ctx->cm_channel);
 	return ret;
@@ -1529,7 +1540,7 @@ int ctx_init(struct pingpong_context *ctx, struct perftest_parameters *user_para
 	}
 	#endif
 
-	if (user_param->use_srq && !user_param->use_xrc && (user_param->tst == LAT || 
+	if (user_param->use_srq && !user_param->use_xrc && (user_param->tst == LAT ||
 				user_param->machine == SERVER || user_param->duplex == ON)) {
 
 		struct ibv_srq_init_attr attr = {
@@ -2431,7 +2442,7 @@ void ctx_set_send_exp_wqes(struct pingpong_context *ctx,
 
 		if (user_param->mac_fwd) {
 			if (user_param->mr_per_qp) {
-				ctx->sge_list[i*user_param->post_list].addr = 
+				ctx->sge_list[i*user_param->post_list].addr =
 					(uintptr_t)ctx->buf[0] + (num_of_qps + i)*BUFF_SIZE(ctx->size,ctx->cycle_buffer);
 			} else {
 				ctx->sge_list[i*user_param->post_list].addr = (uintptr_t)ctx->buf[i];
@@ -3252,7 +3263,7 @@ static inline void set_on_first_rx_packet(struct perftest_parameters *user_param
 		user_param->iters=0;
 		duration_param->state = START_STATE;
 		signal(SIGALRM, catch_alarm);
-		if (user_param->margin > 0) 
+		if (user_param->margin > 0)
 			alarm(user_param->margin);
 		else
 			catch_alarm(0);
@@ -4296,7 +4307,7 @@ int run_iter_lat_send(struct pingpong_context *ctx,struct perftest_parameters *u
 	while (scnt < user_param->iters || rcnt < user_param->iters ||
 			( (user_param->test_type == DURATION && user_param->state != END_STATE))) {
 
-		/* 
+		/*
 		 * Get the received packet. make sure that the client won't enter here until he sends
 		 * his first packet (scnt < 1)
 		 * server will enter here first and wait for a packet to arrive (from the client)
@@ -4475,7 +4486,7 @@ void catch_alarm(int sig)
 			duration_param->state = STOP_SAMPLE_STATE;
 			duration_param->tcompleted[0] = get_cycles();
 			get_cpu_stats(duration_param,2);
-			if (duration_param->margin > 0) 
+			if (duration_param->margin > 0)
 				alarm(duration_param->margin);
 			else
 				catch_alarm(0);
@@ -4506,7 +4517,7 @@ void check_alive(int sig)
 			/* exit nice from run_iter function and report known bw/mr */
 			check_alive_data.to_exit = 1;
 		}
-	} 
+	}
 }
 
 /******************************************************************************
