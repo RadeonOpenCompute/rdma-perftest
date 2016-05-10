@@ -381,8 +381,8 @@ static void usage(const char *argv0, VerbType verb, TestType tst, int connection
 	printf(" Use CUDA lib for GPU-Direct testing.\n");
 	#endif
 
-	#ifdef HAVE_HSA
-	printf("      --use_hsa=[agent,pool] ");
+	#ifdef HAVE_ROCM
+	printf("      --use_rocm=[agent,pool] ");
 	printf(" Allocate HSA global memory pool for agent for PeerDirect testing");
 	printf("(default: first found HSA agent and global pool (0-based))\n");
 	#endif
@@ -520,7 +520,7 @@ static void init_perftest_params(struct perftest_parameters *user_param)
 	user_param->rate_units		= MEGA_BYTE_PS;
 	user_param->output		= -1;
 	user_param->use_cuda		= 0;
-	user_param->use_hsa		= 0;
+	user_param->use_rocm		= 0;
 	user_param->hsa_agent_index	= 0;
 	user_param->hsa_pool_index	= 0;
 	user_param->mmap_file		= NULL;
@@ -676,7 +676,7 @@ static void force_dependecies(struct perftest_parameters *user_param)
 			if (user_param->rx_depth == DEF_RX_SEND) {
 				user_param->rx_depth = (user_param->iters < UC_MAX_RX) ? user_param->iters : UC_MAX_RX;
 			}
-		} 
+		}
 	}
 
 	if (user_param->cq_mod > user_param->tx_depth) {
@@ -1015,8 +1015,8 @@ static void force_dependecies(struct perftest_parameters *user_param)
 	}
 	#endif
 
-	#ifdef HAVE_HSA
-	if (user_param->use_hsa) {
+	#ifdef HAVE_ROCM
+	if (user_param->use_rocm) {
 		if (user_param->tst != BW) {
 			printf(RESULT_LINE);
 			fprintf(stderr," Perftest supports HSA only in BW tests\n");
@@ -1359,7 +1359,7 @@ int parser(struct perftest_parameters *user_param,char *argv[], int argc)
 	static int dont_xchg_versions_flag = 0;
 	static int use_exp_flag = 0;
 	static int use_cuda_flag = 0;
-	static int use_hsa_flag = 0;
+	static int use_rocm_flag = 0;
 	static int mmap_file_flag = 0;
 	static int mmap_offset_flag = 0;
 	static int ipv6_flag = 0;
@@ -1445,8 +1445,8 @@ int parser(struct perftest_parameters *user_param,char *argv[], int argc)
 			{ .name = "retry_count",	.has_arg = 1, .flag = &retry_count_flag, .val = 1},
 			{ .name = "dont_xchg_versions",	.has_arg = 0, .flag = &dont_xchg_versions_flag, .val = 1},
 			{ .name = "use_cuda",		.has_arg = 0, .flag = &use_cuda_flag, .val = 1},
-			#ifdef HAVE_HSA
-			{ .name = "use_hsa",		.has_arg = 2, .flag = &use_hsa_flag, .val = 1},
+			#ifdef HAVE_ROCM
+			{ .name = "use_rocm",		.has_arg = 2, .flag = &use_rocm_flag, .val = 1},
 			#endif
 			{ .name = "mmap",		.has_arg = 1, .flag = &mmap_file_flag, .val = 1},
 			{ .name = "mmap-offset",	.has_arg = 1, .flag = &mmap_offset_flag, .val = 1},
@@ -1489,7 +1489,7 @@ int parser(struct perftest_parameters *user_param,char *argv[], int argc)
 				  if (user_param->connection_type == RawEth)
 					  user_param->raw_qos = 1;
 				  break;
-			case 'x': CHECK_VALUE(user_param->gid_index,uint8_t,MIN_GID_IX,MAX_GID_IX,"Gid index"); 
+			case 'x': CHECK_VALUE(user_param->gid_index,uint8_t,MIN_GID_IX,MAX_GID_IX,"Gid index");
 				  user_param->use_gid_user = 1; break;
 			case 'c': change_conn_type(&user_param->connection_type,user_param->verb,optarg); break;
 			case 'q':
@@ -1575,7 +1575,7 @@ int parser(struct perftest_parameters *user_param,char *argv[], int argc)
 				  if (user_param->size < 1 || user_param->size > (UINT_MAX / 2)) {
 					  fprintf(stderr," Message Size should be between %d and %d\n",1,UINT_MAX/2);
 					  return 1;
-				  }	
+				  }
 				  break;
 			case 'e': user_param->use_event = ON;
 				  if (user_param->verb == WRITE) {
@@ -1776,8 +1776,8 @@ int parser(struct perftest_parameters *user_param,char *argv[], int argc)
 					  user_param->dlid = (uint16_t)strtol(optarg, NULL, 0);
 					  dlid_flag = 0;
 				  }
-				  #ifdef HAVE_HSA
-				  if (use_hsa_flag) {
+				  #ifdef HAVE_ROCM
+				  if (use_rocm_flag) {
 					  if (optarg) {
 						  /* We have optional parameters */
 						  char *pt;
@@ -1850,8 +1850,8 @@ int parser(struct perftest_parameters *user_param,char *argv[], int argc)
 		user_param->use_cuda = 1;
 	}
 
-	if (use_hsa_flag) {
-		user_param->use_hsa = 1;
+	if (use_rocm_flag) {
+		user_param->use_rocm = 1;
 	}
 
 	if (report_both_flag) {
@@ -2258,7 +2258,7 @@ void print_report_bw (struct perftest_parameters *user_param, struct bw_report_d
 	my_bw_rep->msgRate_avg_p2 = msgRate_avg_p2;
 	my_bw_rep->sl = user_param->sl;
 
-	if (!user_param->duplex || (user_param->verb == SEND && user_param->test_type == DURATION) 
+	if (!user_param->duplex || (user_param->verb == SEND && user_param->test_type == DURATION)
 			|| user_param->test_method == RUN_INFINITELY || user_param->connection_type == RawEth)
 		print_full_bw_report(user_param, my_bw_rep, NULL);
 

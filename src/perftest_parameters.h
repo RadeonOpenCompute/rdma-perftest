@@ -45,7 +45,7 @@
  *  print_report_bw - Calculate the peak and average throughput of the BW test.
  *  print_full_bw_report    - Print the peak and average throughput of the BW test.
  *  print_report_lat - Print the min/max/median latency samples taken from a latency test.
- *  print_report_lat_duration     - Prints only the avergae latency for samples taken from 
+ *  print_report_lat_duration     - Prints only the avergae latency for samples taken from
  *									a latency test with Duration..
  *  set_mtu - set MTU from the port or user.
  *  set_eth_mtu    - set MTU for Raw Ethernet tests.
@@ -70,7 +70,7 @@
 #include CUDA_PATH
 #endif
 
-#ifdef HAVE_HSA
+#ifdef HAVE_ROCM
 #include HSA_PATH
 #include HSA_EXT_AMD_PATH
 #endif
@@ -383,7 +383,7 @@ struct perftest_parameters {
 	int             		pkey_index;
 	int				raw_qos;
 	int				use_cuda;
-	int				use_hsa;
+	int				use_rocm;
 	unsigned long			hsa_agent_index;
 	unsigned long			hsa_pool_index;
 	char				*mmap_file;

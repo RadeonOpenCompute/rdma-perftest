@@ -127,7 +127,7 @@ static int pp_free_gpu(struct pingpong_context *ctx)
 	return ret;
 }
 #endif
-#ifdef HAVE_HSA
+#ifdef HAVE_ROCM
 
 static hsa_agent_t  hsa_agent;
 static hsa_amd_memory_pool_t hsa_pool;
@@ -1056,8 +1056,8 @@ int destroy_ctx(struct pingpong_context *ctx,
 	}
 	else
 	#endif
-	#ifdef HAVE_HSA
-	if (user_param->use_hsa) {
+	#ifdef HAVE_ROCM
+	if (user_param->use_rocm) {
 		pp_hsa_shutdown(ctx);
 	}
 	else
@@ -1350,8 +1350,8 @@ int create_single_mr(struct pingpong_context *ctx, struct perftest_parameters *u
 		}
 	} else
 	#endif
-	#ifdef HAVE_HSA
-	if (user_param->use_hsa) {
+	#ifdef HAVE_ROCM
+	if (user_param->use_rocm) {
 		ctx->is_contig_supported = FAILURE;
 		if(pp_hsa_init(ctx, ctx->buff_size, user_param)) {
 			fprintf(stderr, "Couldn't allocate work buf.\n");
