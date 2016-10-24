@@ -88,7 +88,6 @@ hsa_amd_segment_name = { HSA_AMD_SEGMENT_GLOBAL : "HSA_AMD_SEGMENT_GLOBAL" ,
 			HSA_AMD_SEGMENT_GROUP : "HSA_AMD_SEGMENT_GROUP"
 			}
 
-
 # Load HSA RT library
 hsalibpath = ctypes.util.find_library("hsa-runtime64")
 
@@ -415,11 +414,31 @@ def check_rdma():
 		with open("/sys/module/amdp2p/initstate", 'r') as f:
 			read_data = f.read()
 			if read_data.find("live") != -1:
-				return True
-			else:
-				return False
+				return  True
 	except:
-		return False
+		pass
+
+	try:
+		with open("/proc/kallsyms", 'r') as f:
+			read_data = f.read()
+			if read_data.find(" amdkfd_query_rdma_interface") != -1:
+				return True
+	except:
+		pass
+
+	return False
+
+def check_peerdirect():
+	try:
+		with open("/proc/kallsyms", 'r') as f:
+			read_data = f.read()
+			if read_data.find(" ib_register_peer_memory_client") != -1:
+				return True
+	except:
+		pass
+
+	return False
+
 #
 # Main logic
 #
@@ -454,7 +473,14 @@ if __name__ == "__main__":
 		index = index + 1
 	hsa.hsa_shut_down()
 	print("(*) System information:")
+
 	if check_rdma():
-		print("RDMA / PeerDirect support is detected")
+		print("RDMA is supported by amdkfd")
 	else:
-		print("RDMA / PeerDirect  is not supported")
+		print("RDMA is not supported")
+
+	if check_peerdirect():
+		print("PeerDirect interface is detected")
+	else:
+		print("PeerDirect interface is not found")
+
